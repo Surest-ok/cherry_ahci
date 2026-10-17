@@ -17,10 +17,11 @@
 static struct ahci_dev s_primary_ahci;
 static bool s_primary_ahci_active = false;
 
-/* Aligned Hardware Structures for Port 0 */
-static __attribute__((aligned(1024))) struct ahci_cmd_header s_port0_cmd_list[32];
-static __attribute__((aligned(256)))  struct ahci_rcv_fis    s_port0_rcv_fis;
-static __attribute__((aligned(128)))  struct ahci_cmd_table  s_port0_cmd_table;
+/* Aligned Hardware Structures for Ports (supports up to 4 SATA ports) */
+#define AHCI_SUPPORTED_PORTS 4
+static __attribute__((aligned(1024))) struct ahci_cmd_header s_port_cmd_list[AHCI_SUPPORTED_PORTS][32];
+static __attribute__((aligned(256)))  struct ahci_rcv_fis    s_port_rcv_fis[AHCI_SUPPORTED_PORTS];
+static __attribute__((aligned(128)))  struct ahci_cmd_table  s_port_cmd_table[AHCI_SUPPORTED_PORTS];
 static __attribute__((aligned(512)))  uint8_t                s_identify_buf[512];
 
 extern int  ahci_exec_cmd(struct ahci_port *port, uint8_t ata_cmd, uint64_t lba, uint32_t count, void *buf, bool is_write);
@@ -139,22 +140,22 @@ static int ahci_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
             port->is_sata = true;
         }
 
-        /* 3. Rebase Port Memory (Port 0 uses statically allocated buffers) */
-        if (p == 0) {
+        /* 3. Rebase Port Memory */
+        if (p < AHCI_SUPPORTED_PORTS) {
             ahci_port_stop(port_base);
 
-            memset(s_port0_cmd_list, 0, sizeof(s_port0_cmd_list));
-            memset(&s_port0_rcv_fis, 0, sizeof(s_port0_rcv_fis));
-            memset(&s_port0_cmd_table, 0, sizeof(s_port0_cmd_table));
+            memset(s_port_cmd_list[p], 0, sizeof(s_port_cmd_list[p]));
+            memset(&s_port_rcv_fis[p], 0, sizeof(s_port_rcv_fis[p]));
+            memset(&s_port_cmd_table[p], 0, sizeof(s_port_cmd_table[p]));
 
-            port->cmd_list = s_port0_cmd_list;
-            port->rcv_fis = &s_port0_rcv_fis;
-            port->cmd_table = &s_port0_cmd_table;
+            port->cmd_list = s_port_cmd_list[p];
+            port->rcv_fis = &s_port_rcv_fis[p];
+            port->cmd_table = &s_port_cmd_table[p];
 
-            *(volatile uint32_t *)(port_base + AHCI_PORT_CLB) = (uint32_t)((uintptr_t)s_port0_cmd_list & 0xFFFFFFFF);
-            *(volatile uint32_t *)(port_base + AHCI_PORT_CLBU) = (uint32_t)((uint64_t)(uintptr_t)s_port0_cmd_list >> 32);
-            *(volatile uint32_t *)(port_base + AHCI_PORT_FB) = (uint32_t)((uintptr_t)&s_port0_rcv_fis & 0xFFFFFFFF);
-            *(volatile uint32_t *)(port_base + AHCI_PORT_FBU) = (uint32_t)((uint64_t)(uintptr_t)&s_port0_rcv_fis >> 32);
+            *(volatile uint32_t *)(port_base + AHCI_PORT_CLB) = (uint32_t)((uintptr_t)s_port_cmd_list[p] & 0xFFFFFFFF);
+            *(volatile uint32_t *)(port_base + AHCI_PORT_CLBU) = (uint32_t)((uint64_t)(uintptr_t)s_port_cmd_list[p] >> 32);
+            *(volatile uint32_t *)(port_base + AHCI_PORT_FB) = (uint32_t)((uintptr_t)&s_port_rcv_fis[p] & 0xFFFFFFFF);
+            *(volatile uint32_t *)(port_base + AHCI_PORT_FBU) = (uint32_t)((uint64_t)(uintptr_t)&s_port_rcv_fis[p] >> 32);
 
             *(volatile uint32_t *)(port_base + AHCI_PORT_SERR) = 0xFFFFFFFF;
             *(volatile uint32_t *)(port_base + AHCI_PORT_IS) = 0xFFFFFFFF;
